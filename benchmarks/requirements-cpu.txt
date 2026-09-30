@@ -1,0 +1,12 @@
+# CPU benchmark imports only the built-in PyTorch/PyG operations used by GAER.
+# Optional compiled PyG extensions are not needed for this GAT experiment.
+torch==2.8.0
+torch-geometric==2.7.0
+numpy==1.26.4
+pandas==2.2.3
+node2vec==0.5.0
+scikit-learn==1.4.1.post1
+networkx==3.2.1
+gensim==4.3.3
+nltk==3.8.1
+tqdm==4.66.5

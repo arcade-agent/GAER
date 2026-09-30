@@ -1,0 +1,58 @@
+name: Shared-graph Arcade comparison
+
+on:
+  workflow_dispatch:
+  push:
+    paths: [benchmarks/**, src/**, data/**, .github/workflows/arcade-comparison.yml]
+  pull_request:
+    paths: [benchmarks/**, src/**, data/**, .github/workflows/arcade-comparison.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONHASHSEED: '0'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Retrieve only the two smoke datasets
+        run: |
+          git lfs install --local
+          git lfs pull --include='data/bash.csv,data/bash_deps.csv,data/archstudio.csv,data/archstudio_deps.csv'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+      - name: Install GAER CPU environment
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+          .venv/bin/pip install -r benchmarks/requirements-cpu.txt
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install pinned Arcade source in its own environment
+        run: |
+          python -m venv .arcade-venv
+          .arcade-venv/bin/pip install 'arcade-agent @ git+https://github.com/arcade-agent/arcade-agent.git@503e998a2193b01626a587e5c64a0631627a7dc0' pytest==8.4.2 ruff==0.15.13 mypy==1.19.1
+      - name: Check the worker contract
+        run: |
+          .arcade-venv/bin/ruff check --isolated --select E,F,I,W --line-length 100 benchmarks/
+          .arcade-venv/bin/python -m pytest -q benchmarks/
+          .arcade-venv/bin/mypy --strict --follow-untyped-imports --follow-imports=silent benchmarks/arcade_worker.py
+      - name: Compare on shared file graphs
+        run: |
+          .venv/bin/python benchmarks/compare.py \
+            --arcade-python "$PWD/.arcade-venv/bin/python" \
+            --arcade-revision 503e998a2193b01626a587e5c64a0631627a7dc0 \
+            --datasets Bash AS4 --seed 0 --epochs 30 --clusters 10
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: shared-graph-comparison
+          path: results/comparison/
+          if-no-files-found: warn
